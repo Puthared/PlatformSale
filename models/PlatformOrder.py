@@ -19,6 +19,7 @@ class PlatformOrder(db.Base):
     BuyerPaidProductAmount = Column(Numeric(18, 2), nullable=True)
     BuyerPaidShippingFee = Column(Numeric(18, 2), nullable=True)
     TotalAmount = Column(Numeric(18, 2), nullable=True)
+    SalesValue = Column(Numeric(18, 2), nullable=True)
 
     IsCancelled = Column(Boolean, nullable=False, default=False)
     IsReturned = Column(Boolean, nullable=False, default=False)

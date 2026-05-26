@@ -1,5 +1,6 @@
 import math
 import sys
+from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
 from os import path
@@ -152,6 +153,37 @@ def _cell_to_text(value):
         return None
     return str(value)
 
+def _normalize_item_key_part(value):
+    if value in (None, ""):
+        return ""
+    return " ".join(str(value).strip().split())
+
+def _get_item_key_value(row, column_name: str):
+    if isinstance(row, dict):
+        return row.get(column_name)
+    return getattr(row, column_name)
+
+def _build_item_key(row):
+    return (
+        _normalize_item_key_part(_get_item_key_value(row, "OrderId")),
+        _normalize_item_key_part(_get_item_key_value(row, "ProductName")),
+        _normalize_item_key_part(_get_item_key_value(row, "SkuReference")),
+        _normalize_item_key_part(_get_item_key_value(row, "VariationName")),
+    )
+
+def _build_occurrence_map(rows):
+    item_key_counts = defaultdict(int)
+    mapped_rows = {}
+    for row in rows:
+        base_key = _build_item_key(row)
+        item_key_counts[base_key] += 1
+        mapped_rows[(*base_key, item_key_counts[base_key])] = row
+    return mapped_rows
+
+def _chunks(values, chunk_size=1000):
+    for index in range(0, len(values), chunk_size):
+        yield values[index:index + chunk_size]
+
 def _validate_shopee_headers(headers: list[str]):
     expected_headers = [header for header, _ in SHOPEE_HEADER_MAPPING]
     actual_known_headers = headers[:len(expected_headers)]
@@ -301,9 +333,10 @@ async def ImportShopeeMaster(
 
         extra_headers = actual_headers[len(SHOPEE_HEADER_MAPPING):]
         column_names = [column_name for _, column_name in SHOPEE_HEADER_MAPPING]
-        created_on = datetime.now()
-        records = []
+        now = datetime.now()
+        incoming_orders = {}
         skipped_empty_rows = 0
+        skipped_missing_order_id = 0
 
         for row_index, row in enumerate(worksheet.iter_rows(min_row=2, values_only=True), start=2):
             known_values = row[:len(column_names)]
@@ -315,18 +348,87 @@ async def ImportShopeeMaster(
                 column_name: _cell_to_text(value)
                 for column_name, value in zip(column_names, known_values)
             }
-            model_payload["ImportFileName"] = file.filename
-            model_payload["IsNormalized"] = False
-            model_payload["NormalizedOn"] = None
-            model_payload["NormalizeError"] = None
-            model_payload["isDeleted"] = False
-            model_payload["createdBy"] = createdBy
-            model_payload["createdOn"] = created_on
-            records.append(SHMaster(**model_payload))
+            order_id = _normalize_item_key_part(model_payload.get("OrderId"))
+            if not order_id:
+                skipped_missing_order_id += 1
+                continue
+            incoming_orders.setdefault(order_id, []).append(model_payload)
 
-        if records:
-            db.session.add_all(records)
-            db.session.commit()
+        order_ids = list(incoming_orders.keys())
+        existing_rows = []
+        for order_id_chunk in _chunks(order_ids):
+            existing_rows.extend(
+                db.session
+                .query(SHMaster)
+                .filter(SHMaster.OrderId.in_(order_id_chunk))
+                .order_by(SHMaster.ShopeeMasterId)
+                .all()
+            )
+
+        existing_orders = defaultdict(list)
+        for existing_row in existing_rows:
+            existing_orders[_normalize_item_key_part(existing_row.OrderId)].append(existing_row)
+
+        records_to_create = []
+        inserted_rows = 0
+        updated_rows = 0
+        soft_deleted_rows = 0
+        affected_orders = 0
+
+        for order_id, incoming_rows in incoming_orders.items():
+            order_changed = False
+            incoming_item_map = _build_occurrence_map(incoming_rows)
+            existing_item_map = _build_occurrence_map(existing_orders.get(order_id, []))
+
+            for item_key, incoming_payload in incoming_item_map.items():
+                existing_row = existing_item_map.get(item_key)
+                if existing_row is None:
+                    create_payload = dict(incoming_payload)
+                    create_payload["ImportFileName"] = file.filename
+                    create_payload["IsNormalized"] = False
+                    create_payload["NormalizedOn"] = None
+                    create_payload["NormalizeError"] = None
+                    create_payload["isDeleted"] = False
+                    create_payload["createdBy"] = createdBy
+                    create_payload["createdOn"] = now
+                    records_to_create.append(SHMaster(**create_payload))
+                    inserted_rows += 1
+                    order_changed = True
+                    continue
+
+                for column_name in column_names:
+                    setattr(existing_row, column_name, incoming_payload.get(column_name))
+                existing_row.ImportFileName = file.filename
+                existing_row.IsNormalized = False
+                existing_row.NormalizedOn = None
+                existing_row.NormalizeError = None
+                existing_row.isDeleted = False
+                existing_row.modifiedBy = createdBy
+                existing_row.modifiedOn = now
+                updated_rows += 1
+                order_changed = True
+
+            for item_key, existing_row in existing_item_map.items():
+                if item_key in incoming_item_map:
+                    continue
+                if existing_row.isDeleted is not True:
+                    soft_deleted_rows += 1
+                existing_row.isDeleted = True
+                existing_row.IsNormalized = False
+                existing_row.NormalizedOn = None
+                existing_row.NormalizeError = None
+                existing_row.ImportFileName = file.filename
+                existing_row.modifiedBy = createdBy
+                existing_row.modifiedOn = now
+                order_changed = True
+
+            if order_changed:
+                affected_orders += 1
+
+        if records_to_create:
+            db.session.add_all(records_to_create)
+
+        db.session.commit()
 
         return {
             "status": "success",
@@ -334,8 +436,13 @@ async def ImportShopeeMaster(
             "data": {
                 "fileName": file.filename,
                 "sheetName": SHOPEE_SHEET_NAME,
-                "importedRows": len(records),
+                "ordersInFile": len(incoming_orders),
+                "affectedOrders": affected_orders,
+                "insertedRows": inserted_rows,
+                "updatedRows": updated_rows,
+                "softDeletedRows": soft_deleted_rows,
                 "skippedEmptyRows": skipped_empty_rows,
+                "skippedMissingOrderIdRows": skipped_missing_order_id,
                 "extraHeaders": extra_headers,
             },
         }

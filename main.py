@@ -4,7 +4,7 @@ from fastapi import APIRouter, FastAPI, Depends, Request
 from fastapi.concurrency import asynccontextmanager
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from routes import Platform, PlatformOrder, ShopeeMaster
+from routes import Platform, PlatformOrder, ShopeeMaster, TikTokMaster
 from config import database as db
 from config.app_settings import APP_NAME, VERSION
 from src.util.CustomException import CustomHTTPException
@@ -28,6 +28,7 @@ def config_router():
     app.include_router(Platform.router)
     app.include_router(PlatformOrder.router)
     app.include_router(ShopeeMaster.router)
+    app.include_router(TikTokMaster.router)
                                
 config_router()
 
