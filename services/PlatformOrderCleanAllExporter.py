@@ -16,10 +16,11 @@ from models.Platform import Platform
 from models.PlatformOrder import PlatformOrder
 from models.PlatformOrderItem import PlatformOrderItem
 from models.ShopeeMaster import ShopeeMaster
+from models.TiktokMaster import TiktokMaster
 
 
 MAX_EXPORT_ROWS = 50000
-SUPPORTED_PLATFORMS = {"Shopee"}
+SUPPORTED_PLATFORMS = {"Shopee", "Tiktok"}
 
 CLEAN_ALL_HEADERS = [
     "หมายเลขคำสั่งซื้อออนไลน์",
@@ -89,6 +90,8 @@ def _build_clean_all_rows(filters: list[PlatformExportFilter]) -> list[list]:
     for item in filters:
         if item.platform.strip() == "Shopee":
             clean_rows.extend(_build_shopee_rows(item))
+        if item.platform.strip() == "Tiktok":
+            clean_rows.extend(_build_tiktok_rows(item))
 
     return clean_rows
 
@@ -131,6 +134,57 @@ def _build_shopee_rows(item: PlatformExportFilter) -> list[list]:
                 order_item.SellerSku or order_item.PlatformSku or "",
                 total_amount if is_first_order_row else "",
                 shipping_province if is_first_order_row else "",
+                order.OrderStatus if is_first_order_row else "",
+                f"{order_created_at.hour:02d}" if is_first_order_row and order_created_at else "",
+                order_created_at.strftime("%A") if is_first_order_row and order_created_at else "",
+                date(order_created_at.year, order_created_at.month, 1) if is_first_order_row and order_created_at else "",
+                order_item.ProductName or "",
+                _basket_size(total_amount) if is_first_order_row else "",
+                1 if is_first_order_row else 0,
+            ]
+        )
+
+    return clean_rows
+
+
+def _build_tiktok_rows(item: PlatformExportFilter) -> list[list]:
+    start_at = datetime.combine(item.date_from, time.min)
+    end_at = datetime.combine(item.date_to, time.max)
+
+    query_rows = (
+        db.session
+        .query(PlatformOrder, PlatformOrderItem, Platform.PlatformName, TiktokMaster.Province)
+        .join(Platform, PlatformOrder.PlatformId == Platform.PlatformId)
+        .join(PlatformOrderItem, PlatformOrder.PlatformOrderId == PlatformOrderItem.PlatformOrderId)
+        .outerjoin(TiktokMaster, PlatformOrder.RawSourceId == TiktokMaster.TiktokMasterId)
+        .filter(Platform.PlatformName == "Tiktok")
+        .filter(Platform.isDeleted == False)
+        .filter(PlatformOrder.isDeleted == False)
+        .filter(PlatformOrderItem.isDeleted == False)
+        .filter(PlatformOrder.OrderCreatedAt >= start_at)
+        .filter(PlatformOrder.OrderCreatedAt <= end_at)
+        .order_by(PlatformOrder.OrderCreatedAt, PlatformOrder.PlatformOrderId, PlatformOrderItem.PlatformOrderItemId)
+        .all()
+    )
+
+    clean_rows: list[list] = []
+    seen_orders: set[int] = set()
+
+    for order, order_item, platform_name, province in query_rows:
+        is_first_order_row = order.PlatformOrderId not in seen_orders
+        seen_orders.add(order.PlatformOrderId)
+
+        total_amount = _decimal_to_float(order.TotalAmount)
+        order_created_at = order.OrderCreatedAt
+
+        clean_rows.append(
+            [
+                order.PlatformOrderNo if is_first_order_row else "",
+                order_created_at.date() if is_first_order_row and order_created_at else "",
+                platform_name if is_first_order_row else "",
+                order_item.SellerSku or order_item.PlatformSku or "",
+                total_amount if is_first_order_row else "",
+                province if is_first_order_row else "",
                 order.OrderStatus if is_first_order_row else "",
                 f"{order_created_at.hour:02d}" if is_first_order_row and order_created_at else "",
                 order_created_at.strftime("%A") if is_first_order_row and order_created_at else "",

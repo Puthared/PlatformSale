@@ -337,20 +337,23 @@ def _fee_specs(first_row: TiktokMaster, active_order_rows: list[TiktokMaster]) -
     )
 
 
-def normalize_tiktok_master(limit: int = 1000, created_by: str = "system", mode: str = "skip_existing") -> dict:
+def normalize_tiktok_master(limit: int | None = 1000, created_by: str = "system", mode: str = "skip_existing") -> dict:
     if mode != "skip_existing":
         raise ValueError("Only mode='skip_existing' is supported right now.")
 
     now = datetime.now()
     platform_id = _get_tiktok_platform_id()
 
-    trigger_rows = (
+    trigger_rows_query = (
         db.session.query(TiktokMaster)
         .filter(TiktokMaster.IsNormalized == False)
         .order_by(TiktokMaster.TiktokMasterId)
-        .limit(limit)
-        .all()
     )
+
+    if limit is not None:
+        trigger_rows_query = trigger_rows_query.limit(limit)
+
+    trigger_rows = trigger_rows_query.all()
     trigger_orders = _group_by_order_id(trigger_rows)
     trigger_order_ids = list(trigger_orders.keys())
 

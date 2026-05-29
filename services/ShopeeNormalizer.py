@@ -310,20 +310,23 @@ def _soft_delete_platform_order_tree(platform_order: PlatformOrder, now: datetim
     return orders_soft_deleted, items_soft_deleted, fees_soft_deleted
 
 
-def normalize_shopee_master(limit: int = 1000, created_by: str = "system", mode: str = "skip_existing") -> dict:
+def normalize_shopee_master(limit: int | None = 1000, created_by: str = "system", mode: str = "skip_existing") -> dict:
     if mode != "skip_existing":
         raise ValueError("Only mode='skip_existing' is supported right now.")
 
     now = datetime.now()
     platform_id = _get_shopee_platform_id()
 
-    trigger_rows = (
+    trigger_rows_query = (
         db.session.query(ShopeeMaster)
         .filter(ShopeeMaster.IsNormalized == False)
         .order_by(ShopeeMaster.ShopeeMasterId)
-        .limit(limit)
-        .all()
     )
+
+    if limit is not None:
+        trigger_rows_query = trigger_rows_query.limit(limit)
+
+    trigger_rows = trigger_rows_query.all()
     trigger_orders = _group_by_order_id(trigger_rows)
     trigger_order_ids = list(trigger_orders.keys())
 
