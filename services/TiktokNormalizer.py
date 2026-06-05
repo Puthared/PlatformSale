@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -46,24 +46,35 @@ def _to_int(value: Any) -> int | None:
 def _to_datetime(value: Any) -> datetime | None:
     if value in (None, "", "-"):
         return None
+    if isinstance(value, datetime):
+        return _normalize_tiktok_day_first(value)
+    if isinstance(value, date):
+        return _normalize_tiktok_day_first(datetime.combine(value, datetime.min.time()))
+
     text = str(value).strip()
     formats = (
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d",
         "%d/%m/%Y %H:%M:%S",
         "%d/%m/%Y %H:%M",
         "%d/%m/%Y",
-        "%m/%d/%Y %H:%M:%S",
-        "%m/%d/%Y %H:%M",
-        "%m/%d/%Y",
     )
     for date_format in formats:
         try:
-            return datetime.strptime(text, date_format)
+            return _normalize_tiktok_day_first(datetime.strptime(text, date_format))
         except ValueError:
             continue
     return None
+
+
+def _normalize_tiktok_day_first(value: datetime) -> datetime:
+    today = date.today()
+    if value.date() <= today:
+        return value
+    if value.day <= 12 and value.month > today.month:
+        try:
+            return value.replace(month=value.day, day=value.month)
+        except ValueError:
+            return value
+    return value
 
 
 def _decimal_or_zero(value: Any) -> Decimal:

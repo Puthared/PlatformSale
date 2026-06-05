@@ -308,16 +308,33 @@ Order ID
 
 ## Date Parsing
 
-TikTok date อาจอยู่ในรูปแบบ:
+TikTok date ต้องตีความเป็นรูปแบบวัน/เดือน/ปีเท่านั้น
 
 ```text
 30/04/2026 23:28:00
 30/04/2026 23:28
-2026-04-30 23:28:00
-2026-04-30
+30/04/2026
 ```
 
-ให้พยายาม parse เป็น datetime ให้ได้
+ให้ parse เป็น datetime ด้วยรูปแบบ day-first เท่านั้น:
+
+```text
+%d/%m/%Y %H:%M:%S
+%d/%m/%Y %H:%M
+%d/%m/%Y
+```
+
+ห้ามใช้รูปแบบ month-first เช่น:
+
+```text
+%m/%d/%Y
+```
+
+เหตุผลคือข้อมูล TikTok อาจมีวันที่ ambiguous เช่น `12/5/2026`
+ซึ่งต้องอ่านเป็น `12 พฤษภาคม 2026` ไม่ใช่ `5 ธันวาคม 2026`
+
+ถ้า Excel หรือเครื่องมืออ่านไฟล์ตีความวันที่เป็น datetime object แล้ว แต่วันที่กลายเป็นอนาคตผิดปกติ
+เช่น วันนี้ยังไม่ถึงเดือนนั้น และลักษณะวันที่ดูเหมือน day/month ถูกสลับ ให้ตรวจสอบและแก้เป็น day-first ก่อนสร้าง `Clean_Tiktok`
 
 ถ้า parse ไม่ได้:
 
@@ -379,4 +396,3 @@ Do not double count Order Amount when an order has multiple item rows.
 
 Return the generated Excel file.
 ```
-
