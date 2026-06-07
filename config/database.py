@@ -4,9 +4,19 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import pyodbc as pyodbc
 
 
+# Url_DEV = sa.URL.create(
+#     drivername="mssql+pyodbc",
+#     host=r"localhost\SQLEXPRESS",
+#     database="PlatformSales",
+#     query={
+#         "driver":"ODBC DRIVER 17 for SQL Server",
+#         "nolock":"1"
+#     }
+# )
+
 Url_DEV = sa.URL.create(
     drivername="mssql+pyodbc",
-    host=r"localhost\SQLEXPRESS",
+    host=r"DESKTOP-CQ6ETE3\SQLEXPRESS",
     database="PlatformSales",
     query={
         "driver":"ODBC DRIVER 17 for SQL Server",
