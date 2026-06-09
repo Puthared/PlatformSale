@@ -10,11 +10,12 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 
-RAW_FILE_PATH = Path(r"C:\Education\PlatformSale\scripts\RealRawTiktok-2026-06-05-14_17.xlsx")
+SCRIPT_DIR = Path(__file__).resolve().parent
+RAW_FILE_PATH = SCRIPT_DIR / "RealRawTiktok-2026-06-05-14_17.xlsx"
 RAW_SHEET_NAME = "OrderSKUList"
-# OUTPUT_JSON_PATH = Path(r"C:\Education\PlatformSale\scripts\RealRawTiktok-2026-06-05-14_17.json")
-# GROUPED_JSON_PATH = Path(r"C:\Education\PlatformSale\scripts\RealRawTiktok-2026-06-05-14_17_grouped_by_order.json")
-MASTER_FILE_PATH = Path(r"C:\Education\PlatformSale\scripts\ImuraMasterTiktok.xlsx")
+# OUTPUT_JSON_PATH = SCRIPT_DIR / "RealRawTiktok-2026-06-05-14_17.json"
+# GROUPED_JSON_PATH = SCRIPT_DIR / "RealRawTiktok-2026-06-05-14_17_grouped_by_order.json"
+MASTER_FILE_PATH = SCRIPT_DIR / "ImuraMasterTiktok.xlsx"
 
 MASTER_ORDERS_SHEET = "Master_Orders"
 MASTER_ITEMS_SHEET = "Master_Items"
